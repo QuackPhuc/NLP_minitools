@@ -9,9 +9,8 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
-from language_helper import ( 
-    percentage_chinese, percentage_vietnamese, is_uppercase,
-    percentage_similarity, clean_sentence, is_number
+from simple_filter import (
+    only_text, simple, only_phien_am, simple_chinese
 )
 
 GUI_HEIGHT = 800
@@ -28,7 +27,8 @@ class MainWindow(QMainWindow):
         self.current_label_index = None
         self.ocr_data = []
         self.edited_data = {}
-        self.num_columns = 2  # Default number of columns
+        self.column_names = []
+        self.num_columns = 2  # Default number of image columns
 
         self.init_ui()
 
@@ -176,7 +176,7 @@ class MainWindow(QMainWindow):
             self.checkbox.setChecked(self.edited_data[f"{self.current_label_index}"]["is_save"])
         else:
             self.populate_table()
-            self.checkbox.setChecked(True) # Lười ấn nút
+            self.checkbox.setChecked(False)
 
     def show_previous_label(self):
         if not self.images:
@@ -196,17 +196,17 @@ class MainWindow(QMainWindow):
             self.checkbox.setChecked(self.edited_data[f"{self.current_label_index}"]["is_save"])
         else:
             self.populate_table()
-            self.checkbox.setChecked(True)
+            self.checkbox.setChecked(False)
 
     def load_json_data(self):
         """Load OCR data from a JSON file and populate the table."""
         file_name, _ = QFileDialog.getOpenFileName(self, "Open JSON File", "", "JSON Files (*.json)")
         if not file_name:
             return
-
+        
         try:
             with open(file_name, "r", encoding="utf-8") as file:
-                self.ocr_data = json.load(file)
+                self.ocr_data.append(json.load(file))
                 self.populate_table()
         except (json.JSONDecodeError, KeyError) as e:
             QMessageBox.critical(self, "Error", f"Failed to load JSON: {e}")
@@ -238,96 +238,31 @@ class MainWindow(QMainWindow):
                 return
 
             # Find data matching the current label index
-            label_data = [
-                item for item in self.ocr_data 
-                if str(item["label_index"]) == str(self.current_label_index)
-            ]
-            if not label_data:
+            label_datas = []
+            for data in self.ocr_data:
+                label_datas.append([
+                    item for item in data if str(item["label_index"]) == str(self.current_label_index)
+                ])
+
+            if not label_datas:
                 QMessageBox.warning(self, "No Data", f"No data found for label index {self.current_label_index}.")
                 return
+            
+            full_table = []
 
-            # Initialize data structures
-            full_table = [[], [], [], [], [], []]  # Page, Box, Han, Phien am, Dich nghia, Dich tho
-            current_state = "Han"
-            title, tmp_title = "", ""
-            titleDN, titleDT = "", ""
             # Iterate through label data and collect relevant text
-            for entry in label_data:
-                results = entry.get("result", {})
-                lines = results.get("lines", [])
-                for line in lines:
-                    text = line.get("text", "").strip()
-                    if not text:
-                        continue
-
-                    page_index = entry.get("page_index", "")
-                    bounding_polygon = line.get("boundingPolygon", "")
-
-                    # Convert bounding_polygon (list) to a string
-                    bounding_polygon_str = json.dumps(bounding_polygon) if isinstance(bounding_polygon, list) else str(bounding_polygon)
-
-                    if percentage_chinese(text) > 60:  # If text is predominantly Chinese
-                        if current_state != "Han" and text.strip().strip("\n") == "":
-                            continue
-                        full_table[0].append(page_index)  # Page
-                        full_table[1].append(bounding_polygon_str)  # Box
-                        full_table[2].append(text)  # Han
-                    elif percentage_vietnamese(text) > 70:  # If text contains Vietnamese
-                        is_pass = False
-                        for state in ["Phien am", "Dich nghia", "Dich tho"]:
-                            if percentage_similarity(text, state) > 70 and current_state != state and len(full_table[2]) > 0:
-                                current_state = state
-                                is_pass = True
-                                break
-                        
-                        meadian_len = 7
-                        if current_state != "Han" and len(full_table[2]) > 0:
-                            meadian_len = median([len(i.strip().strip("\n").strip("，。o，,。,,.,;")) for i in full_table[2]])
-
-                        if is_pass:
-                            continue
-                        elif current_state != "Han" and len(text.split(" "))  / meadian_len > 2:
-                            continue
-                        elif current_state == "Han" and is_uppercase(text) and tmp_title == "":
-                            tmp_title = text
-                        elif current_state == "Phien am":
-                            if len(full_table[3]) - len(full_table[2]) < 0:
-                                if title == "" and is_uppercase(text):
-                                    title = text
-                                else:
-                                    if clean_sentence(text) == "":
-                                        pass
-                                    else:
-                                        full_table[3].append(clean_sentence(text))
-                        elif current_state == "Dich nghia":
-                            if len(full_table[4]) - len(full_table[2]) < 0:
-                                if len(full_table[4]) > 0 and len(full_table[4][-1]) / len(text) > 2:
-                                    full_table[4][-1] += " " + clean_sentence(text)
-                                else:
-                                    if titleDN == "" and is_uppercase(text):
-                                        titleDN = clean_sentence(text)
-                                    full_table[4].append(clean_sentence(text))
-                        elif current_state == "Dich tho":
-                            if len(full_table[5]) - len(full_table[2]) < 0:
-                                if len(full_table[5]) > 0 and len(full_table[5][-1]) / len(text) > 2:
-                                    full_table[5][-1] += " " + clean_sentence(text)
-                                else:
-                                    if titleDT == "" and is_uppercase(text):
-                                        titleDT = clean_sentence(text)
-                                    full_table[5].append(clean_sentence(text))
-
-            if title != "":
-                full_table[3] = [title] + full_table[3]
-                if titleDN == "" and len(full_table[4]) > 0:
-                    full_table[4] = [title] + full_table[4]
-                if titleDT == "" and len(full_table[5]) > 0:
-                    full_table[5] = [title] + full_table[5]
-            elif tmp_title != "":
-                full_table[3] = [tmp_title] + full_table[3]
-                if titleDN == "" and len(full_table[4]) > 0:
-                    full_table[4] = [tmp_title] + full_table[4]
-                if titleDT == "" and len(full_table[5]) > 0:
-                    full_table[5] = [tmp_title] + full_table[5]
+            for col, data in enumerate(label_datas): # Tự thay đổi và tùy chỉnh cho phù hợp ngữ liệu
+                #full_table.extend(only_text(data))
+                if col == 0:
+                    full_table.extend(simple_chinese(data))
+                elif col == 1:
+                    if len(full_table[0]) > 0:
+                        med = median([len(text) for text in full_table[2]])
+                        leng = len(full_table[2])
+                    else:
+                        med = float("inf")
+                        leng = float("inf")
+                    full_table.extend(only_phien_am(data, med=med, leng=leng))
 
             # Ensure consistent column lengths
             max_length = max(len(col) for col in full_table)
@@ -337,8 +272,16 @@ class MainWindow(QMainWindow):
 
             # Populate the table with data
             self.ocr_table.setRowCount(max_length)
-            self.ocr_table.setColumnCount(6)
-            self.ocr_table.setHorizontalHeaderLabels(["Page", "Box", "Han", "Phien am", "Dich nghia", "Dich tho"])
+            self.ocr_table.setColumnCount(len(full_table))
+
+            if len(self.column_names) == 0:
+                self.column_names = [f"Label {i + 1}" for i in range(len(full_table))]
+            elif len(self.column_names) > len(full_table):
+                self.column_names = self.column_names[:len(full_table)]
+            elif len(self.column_names) < len(full_table):
+                self.column_names.extend([f"Label {i + 1}" for i in range(len(self.column_names), len(full_table))])
+            
+            self.ocr_table.setHorizontalHeaderLabels(self.column_names)
 
             for col_idx, column_data in enumerate(full_table):
                 for row_idx, value in enumerate(column_data):
@@ -353,7 +296,7 @@ class MainWindow(QMainWindow):
     def update_edited_data(self):
         current_data = {}
         current_data["is_save"] = self.checkbox.isChecked()
-        current_data["data"] = [[], [], [], [], [], []]
+        current_data["data"] = [[] for _ in range(self.ocr_table.columnCount())]
 
         for row in range(self.ocr_table.rowCount()):
             for col in range(self.ocr_table.columnCount()):
@@ -376,7 +319,7 @@ class MainWindow(QMainWindow):
 
             with open(output_file, "w", encoding="utf-8-sig") as file:
                 # Write header
-                header = ",".join(["ID"] + ["Page", "Box", "Han", "Phien am", "Dich nghia", "Dich tho"])
+                header = ",".join(["index"] + self.column_names)
                 file.write(header + "\n")
 
                 # Write data
@@ -389,7 +332,6 @@ class MainWindow(QMainWindow):
                         row_data = [str(item).replace(",", "") for item in row_data]
                         file.write(",".join(row_data) + "\n")
 
-
             QMessageBox.information(self, "Success", "Data saved successfully!")
         except Exception as e:
             print(str(e))
@@ -400,56 +342,11 @@ class MainWindow(QMainWindow):
 
 
     def save_json_data(self):
-        """Save OCR data to a JSON file based on the current table."""
-        try:
-            output_file, _ = QFileDialog.getSaveFileName(self, "Save JSON File", "", "JSON Files (*.json)")
-            if not output_file:
-                return
-
-            label_name = "LabelName"  # You can customize this or take input from the user
-            label_index = self.current_label_index
-            result = []
-
-            # Build the result array
-            for row in range(self.ocr_table.rowCount()):
-                row_data = {}
-                for col in range(self.ocr_table.columnCount()):
-                    header = self.ocr_table.horizontalHeaderItem(col).text()
-                    cell = self.ocr_table.item(row, col)
-                    row_data[header] = cell.text() if cell else ""
-                row_data["line_index"] = row + 1  # Add line_index
-                result.append(row_data)
-
-            # Create the final JSON structure
-            output_data = {
-                "label_name": label_name,
-                "label_index": label_index,
-                "result": result
-            }
-
-            with open(output_file, "w", encoding="utf-8") as file:
-                json.dump([output_data], file, indent=4, ensure_ascii=False)
-
-            QMessageBox.information(self, "Success", "Data saved successfully!")
-        except Exception as e:
-            error_file = output_file.replace(".json", "_error.json")
-            with open(error_file, "w", encoding="utf-8") as file:
-                json.dump({"error": str(e)}, file, indent=4)
-            QMessageBox.critical(self, "Error", f"Failed to save JSON: {e}. Saved error log to {error_file}.")
+        pass
 
     def show_context_menu(self, pos):
         """Show context menu for table with options to add/delete rows/columns and rename column."""
         menu = QMenu(self)
-
-        # Copy selected
-        copy_action = QAction("Copy", self)
-        copy_action.triggered.connect(self.copy_selected)
-        menu.addAction(copy_action)
-
-        # Paste clipboard
-        paste_action = QAction("Paste", self)
-        paste_action.triggered.connect(self.paste_selected)
-        menu.addAction(paste_action)
 
         # Add row
         add_row_action = QAction("Add Row", self)
@@ -460,6 +357,16 @@ class MainWindow(QMainWindow):
         del_row_action = QAction("Delete Row", self)
         del_row_action.triggered.connect(self.delete_row)
         menu.addAction(del_row_action)
+
+        # Copy selected
+        copy_action = QAction("Copy", self)
+        copy_action.triggered.connect(self.copy_selected)
+        menu.addAction(copy_action)
+
+        # Paste clipboard
+        paste_action = QAction("Paste", self)
+        paste_action.triggered.connect(self.paste_selected)
+        menu.addAction(paste_action)
 
         # Add column
         add_column_action = QAction("Add Column", self)
@@ -544,50 +451,30 @@ class MainWindow(QMainWindow):
         current_column_count = self.ocr_table.columnCount()
         self.ocr_table.insertColumn(current_column_count)
         self.ocr_table.setHorizontalHeaderItem(current_column_count, QTableWidgetItem(f"Column {current_column_count + 1}"))
+        self.column_names.append(f"Column {current_column_count + 1}")
 
 
     def delete_column(self):
         """Delete the currently selected column."""
+        # Hiện thông báo xác nhận xóa cột
+        reply = QMessageBox.question(self, 'Delete Column', 'Do you want to delete the current column?',
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.No:
+            return
         current_column = self.ocr_table.currentColumn()
         if current_column >= 0:
             self.ocr_table.removeColumn(current_column)
-
+            self.column_names.pop(current_column)
 
     def rename_column(self):
         """Rename the currently selected column."""
         current_column = self.ocr_table.currentColumn()
         if current_column >= 0:
-            current_name = self.ocr_table.horizontalHeaderItem(current_column).text()
+            current_name = self.column_names[current_column]
             new_name, ok = QInputDialog.getText(self, "Rename Column", "Enter new column name:", text=current_name)
             if ok and new_name.strip():
                 self.ocr_table.setHorizontalHeaderItem(current_column, QTableWidgetItem(new_name))
-
-
-    def copy_cell(self):
-        """Copy the selected cell to the clipboard."""
-        selected_items = self.ocr_table.selectedItems()
-        if selected_items:
-            clipboard = QApplication.clipboard()
-            clipboard.setText(selected_items[0].text())
-
-
-    def paste_cell(self):
-        """Paste the clipboard content into the selected cell."""
-        selected_items = self.ocr_table.selectedItems()
-        if selected_items:
-            clipboard = QApplication.clipboard()
-            selected_items[0].setText(clipboard.text())
-
-
-    def keyPressEvent(self, event):
-        """Override keyPressEvent to handle copy-paste shortcuts."""
-        if event.modifiers() == Qt.ControlModifier:
-            if event.key() == Qt.Key_C:
-                self.copy_cell()
-            elif event.key() == Qt.Key_V:
-                self.paste_cell()
-        super().keyPressEvent(event)
-
+                self.column_names[current_column] = new_name
 
 
 if __name__ == "__main__":
