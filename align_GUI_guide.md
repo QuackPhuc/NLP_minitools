@@ -6,7 +6,7 @@
 - Chuyển kết quả OCR được thành file json có dạng như `demo.json`.
 ![Cấu trúc file json](demo_json.png)
 - Xem ví dụ OCR và xuất file output.json trong `demo_azure_ocr.ipynb`
-- Load và sử dụng như trong video demo (`Demo_align_GUI.mp4`)
+- Load và sử dụng như trong video demo [`Demo_align_GUI.mp4`](https://drive.google.com/file/d/1w4vRlbpugyaxDvUbyVbwHjlKnbRsLbwe/view?usp=sharing)
 - Cẩn thận khi làm việc, nên sao lưu vào một file mới lúc làm được một khối lượng công việc nhất định.
 
 # Hướng dẫn tùy chỉnh
