@@ -11,4 +11,4 @@
     + `[Label name]`: tên các nhãn ví dụ như `Han`, `Viet`, `Phienam`,...(người dùng có thể tự sửa đổi qua GUI).
     + `[Label index]`: những bài thơ, ngữ liệu tương ứng sẽ có cùng `Label index`, ví dụ bài thơ chữ hán, phần phiên âm, dịch nghĩa, dịch thơ tương ứng sẽ có cùng `Label index`.
     + `[Page index]`: Là chỉ số trang của ảnh trong file `pdf`.
-- Xem video demo: `Demo_Label_GUI.mp4`
+- Xem video demo: [`Demo_Label_GUI.mp4`](https://drive.google.com/file/d/1RVkRAdbpUjWg5-lp8JPzzyjMeuj3ggIs/view?usp=sharing)
