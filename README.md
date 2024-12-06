@@ -1,3 +1,4 @@
+NLP-HCMUS-0251
 Là các GUI và các hàm hỗ trợ việc trích xuất ngữ liệu nhanh hơn. Bao gồm:
 - Xuất ảnh từ pdf sang png.
 - Label GUI: giúp gán nhãn nhanh hơn (mong là thế). Xem hướng dẫn tại [đây](label_GUI_guide.md)
